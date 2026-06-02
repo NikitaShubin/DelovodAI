@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-extra \
     texlive-fonts-recommended \
-    libreoffice-headless \
+    libreoffice-writer-nogui \
     curl \
     jq \
     && rm -rf /var/lib/apt/lists/*

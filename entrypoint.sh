@@ -1,9 +1,8 @@
 #!/bin/bash
 set -e
 
-CONFIG_FILE="/data/config/openclaw.json"
-ENV_FILE="/data/config/env"
 OPENCLAW_HOME_DIR="/data/openclaw"
+ENV_FILE="/data/config/env"
 AGENTS_MD_SOURCE="/app/AGENTS.md"
 AGENTS_MD_TARGET="/data/config/AGENTS.md"
 
@@ -43,63 +42,72 @@ ENVEOF
 }
 
 generate_config() {
-    CONFIG_FILE="$CONFIG_FILE" node -e '
+    node -e '
+    var crypto = require("crypto");
+    var host = (process.env.OLLAMA_HOST || "ollama:11434")
+      .replace(/^https?:\/\//, "");
+
+    var gwToken = process.env.OPENCLAW_GATEWAY_TOKEN;
+    if (!gwToken) {
+      gwToken = crypto.randomBytes(24).toString("hex");
+      console.log("Generated gateway token: " + gwToken);
+    }
+
+    var gwPort = parseInt(process.env.WEBUI_PORT || "3000", 10);
+    var primaryModel = "ollama/" + (process.env.DEFAULT_MODEL || "gpt-oss:20b");
+
     var cfg = {
-      locale: "ru",
-      telemetry: { enabled: false },
+      gateway: {
+        mode: "local",
+        port: gwPort,
+        bind: "lan",
+        auth: { token: gwToken },
+        controlUi: { enabled: true }
+      },
       models: {
         providers: {
           ollama: {
-            baseUrl: "http://" + (process.env.OLLAMA_HOST || "ollama:11434"),
+            baseUrl: "http://" + host,
             apiKey: "ollama-local",
-            api: "ollama",
-            discovery: { enabled: true }
+            api: "openai-completions",
+            injectNumCtxForOpenAICompat: true
           }
         }
       },
       agents: {
         defaults: {
           model: {
-            primary: "ollama/" + (process.env.DEFAULT_MODEL || "gpt-oss:20b")
+            primary: primaryModel
           }
         }
       },
-      channels: {},
-      web: {
-        enabled: true,
-        port: parseInt(process.env.WEBUI_PORT || "3000", 10)
-      },
-      tools: {
-        web: { search: { provider: "ollama" } }
-      },
-      plugins: { dirs: ["/data/plugins"] }
+      plugins: {
+        load: { paths: ["/data/plugins"] }
+      }
     };
 
     if (process.env.TELEGRAM_BOT_TOKEN) {
-      cfg.channels.telegram = {
-        enabled: true,
-        botToken: process.env.TELEGRAM_BOT_TOKEN,
-        dmPolicy: "pairing"
+      cfg.channels = {
+        telegram: {
+          enabled: true,
+          botToken: process.env.TELEGRAM_BOT_TOKEN,
+          dmPolicy: "pairing"
+        }
       };
     }
 
-    if (process.env.WEBUI_PASSWORD) {
-      cfg.web.auth = {
-        type: "shared-secret",
-        secret: process.env.WEBUI_PASSWORD
-      };
-    } else {
-      console.warn(
-        "WARNING: Web UI has no authentication. " +
-        "Set WEBUI_PASSWORD to enable password protection."
-      );
-    }
-
-    require("fs").writeFileSync(process.env.CONFIG_FILE, JSON.stringify(cfg, null, 2));
+    require("fs").writeFileSync(
+      process.env.HOME + "/.openclaw/openclaw.json",
+      JSON.stringify(cfg, null, 2)
+    );
     '
 }
 
 print_welcome() {
+    local host="${OLLAMA_HOST:-ollama:11434}"
+    host="${host#http://}"
+    host="${host#https://}"
+
     echo ""
     echo "======================================"
     echo "  DelovodAI v0.1.0"
@@ -109,11 +117,33 @@ print_welcome() {
     else
         echo "  Telegram: not configured"
     fi
-    echo "  Ollama: http://${OLLAMA_HOST:-ollama:11434}"
+    echo "  Ollama: http://${host}"
     echo "  Model: ${DEFAULT_MODEL:-gpt-oss:20b}"
     echo "======================================"
     echo ""
 }
+
+print_welcome() {
+    local host="${OLLAMA_HOST:-ollama:11434}"
+    host="${host#http://}"
+    host="${host#https://}"
+
+    echo ""
+    echo "======================================"
+    echo "  DelovodAI v0.1.0"
+    echo "  Web UI: http://localhost:${WEBUI_PORT:-3000}"
+    if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+        echo "  Telegram: enabled"
+    else
+        echo "  Telegram: not configured"
+    fi
+    echo "  Ollama: http://${host}"
+    echo "  Model: ${DEFAULT_MODEL:-gpt-oss:20b}"
+    echo "======================================"
+    echo ""
+}
+
+CONFIG_FILE="$HOME/.openclaw/openclaw.json"
 
 if [ -f "$CONFIG_FILE" ]; then
     load_env

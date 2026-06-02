@@ -14,23 +14,16 @@ services:
       - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-oss:20b}
       - TZ=${TZ:-Europe/Moscow}
       - OPENCLAW_TELEMETRY=false
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
     volumes:
       - ./data:/data
-    networks:
-      - selfhosted-ai_ai-network
     restart: unless-stopped
 
   radicale:
-    image: tomsquest/radicale:latest
+    image: kozea/radicale:latest
     container_name: radicale
     ports:
       - "${CALDAV_PORT:-5232}:5232"
     volumes:
       - ./data/calendar:/var/lib/radicale
-    networks:
-      - selfhosted-ai_ai-network
     restart: unless-stopped
-
-networks:
-  selfhosted-ai_ai-network:
-    external: true
