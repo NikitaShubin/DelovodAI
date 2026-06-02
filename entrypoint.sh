@@ -2,6 +2,7 @@
 set -e
 
 OPENCLAW_HOME_DIR="/data/openclaw"
+CONFIG_FILE="$OPENCLAW_HOME_DIR/openclaw.json"
 ENV_FILE="/data/config/env"
 AGENTS_MD_SOURCE="/app/AGENTS.md"
 AGENTS_MD_TARGET="/data/config/AGENTS.md"
@@ -19,7 +20,7 @@ setup_agents_md() {
 }
 
 link_openclaw_home() {
-    mkdir -p "$OPENCLAW_HOME_DIR"
+    rm -rf ~/.openclaw
     ln -snf "$OPENCLAW_HOME_DIR" ~/.openclaw
 }
 
@@ -32,13 +33,28 @@ load_env() {
 }
 
 save_env() {
-    cat > "$ENV_FILE" <<-ENVEOF
-OLLAMA_HOST=$OLLAMA_HOST
-TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
-WEBUI_PASSWORD=$WEBUI_PASSWORD
-WEBUI_PORT=$WEBUI_PORT
-DEFAULT_MODEL=$DEFAULT_MODEL
-ENVEOF
+    local tmpfile; tmpfile=$(mktemp)
+    if [ -f "$ENV_FILE" ]; then
+        cp "$ENV_FILE" "$tmpfile"
+    else
+        : >"$tmpfile"
+    fi
+    for key in OLLAMA_HOST TELEGRAM_BOT_TOKEN WEBUI_PASSWORD WEBUI_PORT DEFAULT_MODEL OPENCLAW_GATEWAY_TOKEN; do
+        local val; val=$(eval echo "\${$key:-}")
+        if grep -qE "^${key}=" "$tmpfile" 2>/dev/null; then
+            if [ -n "$val" ]; then
+                if sed --version 2>/dev/null | grep -q GNU; then
+                    sed -i "s|^${key}=.*|${key}=${val}|" "$tmpfile"
+                else
+                    sed -i '' "s|^${key}=.*|${key}=${val}|" "$tmpfile"
+                fi
+            fi
+        else
+            echo "${key}=${val}" >> "$tmpfile"
+        fi
+    done
+    cat "$tmpfile" > "$ENV_FILE"
+    rm -f "$tmpfile"
 }
 
 generate_config() {
@@ -53,16 +69,25 @@ generate_config() {
       console.log("Generated gateway token: " + gwToken);
     }
 
+    var gwPassword = process.env.WEBUI_PASSWORD;
     var gwPort = parseInt(process.env.WEBUI_PORT || "3000", 10);
     var primaryModel = "ollama/" + (process.env.DEFAULT_MODEL || "gpt-oss:20b");
+
+    var authCfg;
+    if (gwPassword) {
+      authCfg = { mode: "password", password: gwPassword, token: gwToken };
+      console.log("Using password auth");
+    } else {
+      authCfg = { mode: "token", token: gwToken };
+    }
 
     var cfg = {
       gateway: {
         mode: "local",
         port: gwPort,
         bind: "lan",
-        auth: { token: gwToken },
-        controlUi: { enabled: true }
+        auth: authCfg,
+        controlUi: { enabled: true, allowInsecureAuth: true }
       },
       models: {
         providers: {
@@ -103,24 +128,34 @@ generate_config() {
     '
 }
 
-print_welcome() {
-    local host="${OLLAMA_HOST:-ollama:11434}"
-    host="${host#http://}"
-    host="${host#https://}"
+sync_auth() {
+    local current_mode current_password current_token desired_password
+    desired_password="${WEBUI_PASSWORD:-}"
+    current_mode=$(jq -r '.gateway.auth.mode // empty' "$CONFIG_FILE" 2>/dev/null)
+    current_password=$(jq -r '.gateway.auth.password // empty' "$CONFIG_FILE" 2>/dev/null)
+    current_token=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE" 2>/dev/null)
 
-    echo ""
-    echo "======================================"
-    echo "  DelovodAI v0.1.0"
-    echo "  Web UI: http://localhost:${WEBUI_PORT:-3000}"
-    if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
-        echo "  Telegram: enabled"
+    if [ -n "$desired_password" ]; then
+        if [ "$current_mode" != "password" ] || [ "$current_password" != "$desired_password" ]; then
+            echo "Setting password auth in config"
+            if [ -z "$current_token" ]; then
+                current_token=$(openssl rand -hex 24 2>/dev/null || node -e "process.stdout.write(require('crypto').randomBytes(24).toString('hex'))")
+            fi
+            jq --arg mode "password" --arg password "$desired_password" --arg token "$current_token" \
+              '.gateway.auth = { mode: $mode, password: $password, token: $token }' \
+              "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        fi
     else
-        echo "  Telegram: not configured"
+        if [ "$current_mode" != "token" ] || [ -z "$current_token" ]; then
+            if [ -z "$current_token" ]; then
+                current_token=$(openssl rand -hex 24 2>/dev/null || node -e "process.stdout.write(require('crypto').randomBytes(24).toString('hex'))")
+            fi
+            echo "Setting token auth in config"
+            jq --arg mode "token" --arg token "$current_token" \
+              '.gateway.auth = { mode: $mode, token: $token }' \
+              "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        fi
     fi
-    echo "  Ollama: http://${host}"
-    echo "  Model: ${DEFAULT_MODEL:-gpt-oss:20b}"
-    echo "======================================"
-    echo ""
 }
 
 print_welcome() {
@@ -143,13 +178,19 @@ print_welcome() {
     echo ""
 }
 
-CONFIG_FILE="$HOME/.openclaw/openclaw.json"
+load_env
 
 if [ -f "$CONFIG_FILE" ]; then
-    load_env
     ensure_dirs
     setup_agents_md
     link_openclaw_home
+    sync_auth
+
+    if [ -z "$OPENCLAW_GATEWAY_TOKEN" ]; then
+        OPENCLAW_GATEWAY_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE")
+    fi
+    save_env
+
     print_welcome
     exec openclaw gateway
 fi
@@ -163,10 +204,15 @@ DEFAULT_MODEL="${DEFAULT_MODEL:-gpt-oss:20b}"
 echo "DelovodAI: first run — generating configuration..."
 
 ensure_dirs
-save_env
 link_openclaw_home
 setup_agents_md
 generate_config
+
+if [ -z "$OPENCLAW_GATEWAY_TOKEN" ]; then
+    OPENCLAW_GATEWAY_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE")
+fi
+
+save_env
 
 print_welcome
 exec openclaw gateway
