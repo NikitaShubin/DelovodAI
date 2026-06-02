@@ -1,0 +1,36 @@
+name: delovodai
+
+services:
+  delovodai:
+    build: .
+    container_name: delovodai
+    ports:
+      - "${WEBUI_PORT:-3000}:3000"
+    environment:
+      - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - WEBUI_PASSWORD=${WEBUI_PASSWORD}
+      - WEBUI_PORT=${WEBUI_PORT:-3000}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-oss:20b}
+      - TZ=${TZ:-Europe/Moscow}
+      - OPENCLAW_TELEMETRY=false
+    volumes:
+      - ./data:/data
+    networks:
+      - selfhosted-ai_ai-network
+    restart: unless-stopped
+
+  radicale:
+    image: tomsquest/radicale:latest
+    container_name: radicale
+    ports:
+      - "${CALDAV_PORT:-5232}:5232"
+    volumes:
+      - ./data/calendar:/var/lib/radicale
+    networks:
+      - selfhosted-ai_ai-network
+    restart: unless-stopped
+
+networks:
+  selfhosted-ai_ai-network:
+    external: true
