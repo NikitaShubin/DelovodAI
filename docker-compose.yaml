@@ -15,7 +15,6 @@ services:
       - TZ=${TZ:-Europe/Moscow}
       - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
       - OPENCLAW_TELEMETRY=false
-      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
     volumes:
       - ./data:/data
     extra_hosts:
