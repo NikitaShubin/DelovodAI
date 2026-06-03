@@ -206,17 +206,37 @@ resolve_telegram_ids() {
               "https://api.telegram.org/bot${token}/getChat?chat_id=@${raw}" 2>/dev/null | \
               jq -r '.result.id // empty' 2>/dev/null)
             if [ -z "$id" ]; then
-                id=$(curl -s --connect-timeout 5 --max-time 10 \
-                  "https://api.telegram.org/bot${token}/getUpdates" 2>/dev/null | \
-                  jq -r --arg u "$raw" '.result[]?.message?.from | select(.username == $u) | .id // empty' 2>/dev/null | \
-                  head -1)
+                local updates last_id offset deadline
+                updates=$(curl -s --connect-timeout 5 --max-time 10 \
+                  "https://api.telegram.org/bot${token}/getUpdates" 2>/dev/null)
+                id=$(echo "$updates" | jq -r --arg u "$raw" '
+                  .result[] | select(.message != null) | .message.from |
+                  select(.username == $u) | .id
+                ' 2>/dev/null | head -1)
+                if [ -z "$id" ]; then
+                    last_id=$(echo "$updates" | jq -r '[.result[].update_id] | max // 0' 2>/dev/null)
+                    offset=$((last_id + 1))
+                    echo -e "\r  ${DIM}Ожидаю сообщение от @${raw} (напишите боту /start)...${NC}" >&2
+                    deadline=$(($(date +%s) + 15))
+                    while [ "$(date +%s)" -lt "$deadline" ]; do
+                        sleep 2
+                        updates=$(curl -s --connect-timeout 5 --max-time 8 \
+                          "https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=5" 2>/dev/null)
+                        id=$(echo "$updates" | jq -r --arg u "$raw" '
+                          .result[] | select(.message != null) | .message.from |
+                          select(.username == $u) | .id
+                        ' 2>/dev/null | head -1)
+                        [ -n "$id" ] && break
+                        last_id=$(echo "$updates" | jq -r '[.result[].update_id] | max // 0' 2>/dev/null)
+                        offset=$((last_id + 1))
+                    done
+                fi
             fi
             if [ -n "$id" ]; then
                 echo -e "\r  ${GREEN}✓${NC} @${raw} → ID ${id}" >&2
                 resolved+=("$id")
             else
                 echo -e "\r  ${YELLOW}⚠${NC} Не удалось получить ID для @${raw}" >&2
-                echo -e "  ${DIM}  Убедитесь, что @${raw} написал боту /start, и повторите.${NC}" >&2
             fi
         fi
     done
@@ -357,9 +377,9 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
         echo -e "${DIM}Введите Telegram username или числовой ID пользователей,${NC}"
         echo -e "${DIM}которым разрешён доступ к боту (через пробел).${NC}"
         echo -e "${DIM}Username будет преобразован в ID автоматически.${NC}"
-        echo -e "${DIM}Важно: пользователь должен предварительно написать боту${NC}"
-        echo -e "${DIM}        любое сообщение (например /start).${NC}"
-        echo -e "${DIM}ID можно узнать у @userinfobot (напишите /start).${NC}"
+        echo -e "${DIM}Подсказка: если скрипт не найдёт ID сразу, он будет ждать${NC}"
+        echo -e "${DIM}        15 секунд — просто напишите боту /start в этот момент.${NC}"
+        echo -e "${DIM}ID также можно узнать у @userinfobot.${NC}"
         echo -e "${DIM}Пример: @user1 123456789 @user2${NC}"
         echo -e "${DIM}Enter = ручное подтверждение через pairing.${NC}"
 
