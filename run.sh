@@ -201,16 +201,22 @@ resolve_telegram_ids() {
             resolved+=("$raw")
         else
             echo -ne "  ${DIM}Получаю ID для @${raw}...${NC}" >&2
-            local resp
-            resp=$(curl -s --connect-timeout 5 --max-time 10 \
-              "https://api.telegram.org/bot${token}/getChat?chat_id=@${raw}" 2>/dev/null || true)
             local id
-            id=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null)
+            id=$(curl -s --connect-timeout 5 --max-time 10 \
+              "https://api.telegram.org/bot${token}/getChat?chat_id=@${raw}" 2>/dev/null | \
+              jq -r '.result.id // empty' 2>/dev/null)
+            if [ -z "$id" ]; then
+                id=$(curl -s --connect-timeout 5 --max-time 10 \
+                  "https://api.telegram.org/bot${token}/getUpdates" 2>/dev/null | \
+                  jq -r --arg u "$raw" '.result[]?.message?.from | select(.username == $u) | .id // empty' 2>/dev/null | \
+                  head -1)
+            fi
             if [ -n "$id" ]; then
                 echo -e "\r  ${GREEN}✓${NC} @${raw} → ID ${id}" >&2
                 resolved+=("$id")
             else
                 echo -e "\r  ${YELLOW}⚠${NC} Не удалось получить ID для @${raw}" >&2
+                echo -e "  ${DIM}  Убедитесь, что @${raw} написал боту /start, и повторите.${NC}" >&2
             fi
         fi
     done
@@ -367,8 +373,8 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
             if [ "$TELEGRAM_ALLOWED_USERS" = "[]" ]; then
                 echo ""
                 echo -e "${YELLOW}⚠${NC} Не удалось получить ID через API Telegram (возможна блокировка)."
-                echo -e "${DIM}Узнайте ID у @userinfobot (напишите /start) или напишите боту${NC}"
-                echo -e "${DIM}и посмотрите в логах: docker logs delovodai | grep from.id${NC}"
+                echo -e "${DIM}Узнайте ID у @userinfobot (напишите /start).${NC}"
+                echo -e "${DIM}Либо напишите боту через искомый аккаунт, запустите скрипт снова.${NC}"
                 echo -e "${DIM}Введите числовые ID через пробел, или нажмите Enter для pairing.${NC}"
                 read -p "$(echo -e "${DIM}Числовые ID: ${NC}")" manual_ids
                 ids_arr=()
