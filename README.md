@@ -8,22 +8,75 @@
 
 - Telegram-бот и/или веб-интерфейс
 - Документооборот, переписка, расписание, задачи
-- Полная локальность: вся конфигурация и данные в папке `data/` (в `.gitignore`)
+- Полная локальность: вся конфигурация и данные в папке `data/`
 - Расширяется плагинами
 
 ## Быстрый старт
 
 ```bash
-# Запустить (автоматически создаст .env из .env.example при первом запуске)
+# Скрипт сам запросит все параметры в интерактивном режиме
 ./run.sh
 ```
 
-Или вручную:
+При первом запуске скрипт обнаружит отсутствие `.env` и запустит мастер настройки.
+
+Также можно передать параметры через CLI:
 
 ```bash
-cp .env.example .env
-# настроить .env при необходимости
-docker compose up -d
+./run.sh --ollama-host ollama:11434 --model qwen3.6:35b-a3b-q8_0 --webui-password mypass \
+         --telegram-token 123:ABC --non-interactive
+```
+
+### Повторная настройка
+
+```bash
+./run.sh --reconfigure
+# или коротко:
+./run.sh -r
+```
+
+При `--reconfigure` скрипт покажет текущие значения как значения по умолчанию.
+
+### Другие скрипты
+
+| Скрипт | Назначение |
+|---|---|
+| `./run.sh` | Сборка, запуск, интерактивная настройка |
+| `./restart.sh` | Остановка + запуск (передаёт `-r` в run.sh) |
+| `./stop.sh` | Остановка сервисов |
+
+## Telegram-бот
+
+### Режимы аутентификации
+
+**Allowlist** (рекомендуется) — укажите username или числовой ID пользователей
+при настройке:
+
+```
+./run.sh -r
+# В поле "Пользователи Telegram" введите: @ваш_username
+```
+
+Username будет автоматически преобразован в числовой ID через `getChat`.
+Можно указать несколько пользователей через пробел.
+
+**Pairing** — если не указывать пользователей, бот будет работать в режиме
+подтверждения вручную. Напишите боту, получите код и выполните:
+
+```bash
+./run.sh --approve КОД
+# или коротко:
+./run.sh -a КОД
+```
+
+### Защита от блокировок
+
+При запуске через Docker compose `api.telegram.org`
+принудительно резолвится в IP `149.154.167.220` (через `extra_hosts`).
+Если IP перестанет работать, задайте другой через `.env`:
+
+```bash
+TELEGRAM_API_IP=<другой_IP>
 ```
 
 ## Переменные окружения (`.env`)
@@ -32,10 +85,13 @@ docker compose up -d
 |---|---|---|---|
 | `OLLAMA_HOST` | да | `ollama:11434` | Адрес Ollama |
 | `TELEGRAM_BOT_TOKEN` | нет | — | Токен Telegram-бота |
+| `TELEGRAM_ALLOWED_USERS` | нет | `[]` | JSON-массив числовых ID для allowlist |
+| `TELEGRAM_API_IP` | нет | `149.154.167.220` | IP-адрес Telegram Bot API (обход блокировок) |
 | `WEBUI_PASSWORD` | нет | — | Пароль веб-интерфейса |
 | `WEBUI_PORT` | нет | `3000` | Порт веб-интерфейса |
-| `CALDAV_PORT` | нет | `5232` | Порт CalDAV-сервера (Radicale) |
+| `CALDAV_PORT` | нет | — | Порт CalDAV (пусто = только внутри Docker) |
 | `DEFAULT_MODEL` | нет | `gpt-oss:20b` | Модель Ollama по умолчанию |
+| `TZ` | нет | `Europe/Moscow` | Часовой пояс |
 
 ## Структура томов
 
@@ -44,7 +100,7 @@ docker compose up -d
 ```
 data/
 ├── config/
-│   ├── openclaw.json    ← конфигурация OpenCLAW (генерируется при первом запуске)
+│   ├── openclaw.json    ← конфигурация OpenCLAW (генерируется при каждом запуске)
 │   ├── env              ← сохранённые переменные окружения
 │   └── AGENTS.md        ← системный промпт ассистента (можно редактировать)
 ├── openclaw/            ← данные OpenCLAW (сессии, память)
@@ -56,8 +112,25 @@ data/
 └── tasks/               ← задачи
 ```
 
+## CLI-флаги `run.sh`
+
+| Флаг | Описание |
+|---|---|
+| `-o, --ollama-host HOST` | Адрес Ollama-сервера |
+| `-t, --telegram-token TOKEN` | Токен Telegram-бота |
+| `-w, --webui-password PASS` | Пароль Web UI |
+| `-p, --webui-port PORT` | Порт Web UI (по умолчанию 3000) |
+| `-c, --caldav-port PORT` | Порт CalDAV (пусто = только внутри Docker) |
+| `-m, --model NAME` | Модель Ollama |
+| `-z, --tz TIMEZONE` | Часовой пояс |
+| `-n, --non-interactive` | Неинтерактивный режим (нужны все флаги) |
+| `-r, --reconfigure` | Перезапустить мастер настройки |
+| `-a, --approve CODE` | Подтвердить Telegram pairing-код |
+| `-h, --help` | Показать справку |
+
 ## Зависимости
 
 - **Docker** + **Docker Compose**
-- **SelfHostedAI** — Ollama + Open WebUI в соседней директории ([github.com/NikitaShubin/SelfHostedAI](https://github.com/NikitaShubin/SelfHostedAI)).  
+- **SelfHostedAI** — Ollama + Open WebUI в соседней директории
+  ([github.com/NikitaShubin/SelfHostedAI](https://github.com/NikitaShubin/SelfHostedAI)).
   Ollama должен быть запущен и доступен по адресу из `OLLAMA_HOST`.

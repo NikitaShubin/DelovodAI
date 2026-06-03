@@ -39,15 +39,14 @@ save_env() {
     else
         : >"$tmpfile"
     fi
-    for key in OLLAMA_HOST TELEGRAM_BOT_TOKEN WEBUI_PASSWORD WEBUI_PORT DEFAULT_MODEL OPENCLAW_GATEWAY_TOKEN; do
+    for key in OLLAMA_HOST TELEGRAM_BOT_TOKEN WEBUI_PASSWORD WEBUI_PORT DEFAULT_MODEL OPENCLAW_GATEWAY_TOKEN TELEGRAM_ALLOWED_USERS; do
         local val; val=$(eval echo "\${$key:-}")
+        [ -z "$val" ] && continue
         if grep -qE "^${key}=" "$tmpfile" 2>/dev/null; then
-            if [ -n "$val" ]; then
-                if sed --version 2>/dev/null | grep -q GNU; then
-                    sed -i "s|^${key}=.*|${key}=${val}|" "$tmpfile"
-                else
-                    sed -i '' "s|^${key}=.*|${key}=${val}|" "$tmpfile"
-                fi
+            if sed --version 2>/dev/null | grep -q GNU; then
+                sed -i "s|^${key}=.*|${key}=${val}|" "$tmpfile"
+            else
+                sed -i '' "s|^${key}=.*|${key}=${val}|" "$tmpfile"
             fi
         else
             echo "${key}=${val}" >> "$tmpfile"
@@ -112,13 +111,30 @@ generate_config() {
     };
 
     if (process.env.TELEGRAM_BOT_TOKEN) {
+      var tgPolicy = "pairing";
+      var tgAllowFrom = [];
+      try {
+        var parsed = JSON.parse(process.env.TELEGRAM_ALLOWED_USERS || "[]");
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          tgPolicy = "allowlist";
+          tgAllowFrom = parsed;
+        }
+      } catch (e) {}
+
       cfg.channels = {
         telegram: {
           enabled: true,
           botToken: process.env.TELEGRAM_BOT_TOKEN,
-          dmPolicy: "pairing"
+          dmPolicy: tgPolicy,
+          network: { autoSelectFamily: false }
         }
       };
+      if (tgAllowFrom.length > 0) {
+        cfg.channels.telegram.allowFrom = tgAllowFrom;
+        cfg.commands = {
+          ownerAllowFrom: tgAllowFrom.map(function (id) { return "telegram:" + id; })
+        };
+      }
     }
 
     require("fs").writeFileSync(
@@ -180,28 +196,13 @@ print_welcome() {
 
 load_env
 
+# Preserve gateway token if config already exists
 if [ -f "$CONFIG_FILE" ]; then
-    ensure_dirs
-    setup_agents_md
-    link_openclaw_home
-    sync_auth
-
-    if [ -z "$OPENCLAW_GATEWAY_TOKEN" ]; then
-        OPENCLAW_GATEWAY_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE")
+    PRESERVED_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE" 2>/dev/null)
+    if [ -n "$PRESERVED_TOKEN" ]; then
+        export OPENCLAW_GATEWAY_TOKEN="$PRESERVED_TOKEN"
     fi
-    save_env
-
-    print_welcome
-    exec openclaw gateway
 fi
-
-OLLAMA_HOST="${OLLAMA_HOST:-ollama:11434}"
-TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
-WEBUI_PASSWORD="${WEBUI_PASSWORD:-}"
-WEBUI_PORT="${WEBUI_PORT:-3000}"
-DEFAULT_MODEL="${DEFAULT_MODEL:-gpt-oss:20b}"
-
-echo "DelovodAI: first run — generating configuration..."
 
 ensure_dirs
 link_openclaw_home
@@ -209,7 +210,7 @@ setup_agents_md
 generate_config
 
 if [ -z "$OPENCLAW_GATEWAY_TOKEN" ]; then
-    OPENCLAW_GATEWAY_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE")
+    OPENCLAW_GATEWAY_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE" 2>/dev/null || true)
 fi
 
 save_env
