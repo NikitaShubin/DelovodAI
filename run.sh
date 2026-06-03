@@ -318,7 +318,10 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
         echo
         WEBUI_PASSWORD="${input:-$_ENV_WEBUI_PASSWORD}"
     else
-        WEBUI_PASSWORD=$(prompt_optional "Пароль Web UI (Enter = без пароля)" "нет")
+        echo -e "${DIM}Пароль Web UI (Enter = без пароля):${NC}"
+        read -s input
+        echo
+        WEBUI_PASSWORD="${input:-нет}"
         [ "$WEBUI_PASSWORD" = "нет" ] && WEBUI_PASSWORD=""
     fi
     if [ -z "$WEBUI_PASSWORD" ]; then
