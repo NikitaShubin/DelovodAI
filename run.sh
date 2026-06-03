@@ -336,6 +336,10 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
         [ "$tg_input" = "$token_preview" ] && tg_input=""
         TELEGRAM_BOT_TOKEN="${tg_input:-$_ENV_TELEGRAM_BOT_TOKEN}"
     else
+        echo ""
+        echo -e "${DIM}  → Напишите @BotFather в Telegram, отправьте /newbot,${NC}"
+        echo -e "${DIM}    скопируйте полученный токен (вида 123:abc...def).${NC}"
+        echo ""
         TELEGRAM_BOT_TOKEN=$(prompt_optional "Токен Telegram-бота (Enter = пропустить)" "нет")
         [ "$TELEGRAM_BOT_TOKEN" = "нет" ] && TELEGRAM_BOT_TOKEN=""
     fi
