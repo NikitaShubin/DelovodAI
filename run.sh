@@ -357,6 +357,8 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
         echo -e "${DIM}Введите Telegram username или числовой ID пользователей,${NC}"
         echo -e "${DIM}которым разрешён доступ к боту (через пробел).${NC}"
         echo -e "${DIM}Username будет преобразован в ID автоматически.${NC}"
+        echo -e "${DIM}Важно: пользователь должен предварительно написать боту${NC}"
+        echo -e "${DIM}        любое сообщение (например /start).${NC}"
         echo -e "${DIM}ID можно узнать у @userinfobot (напишите /start).${NC}"
         echo -e "${DIM}Пример: @user1 123456789 @user2${NC}"
         echo -e "${DIM}Enter = ручное подтверждение через pairing.${NC}"
