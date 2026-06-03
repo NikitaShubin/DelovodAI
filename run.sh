@@ -194,6 +194,11 @@ resolve_telegram_ids() {
     shift
     local raw_ids=("$@")
     local resolved=()
+    local tg_api_ip
+    tg_api_ip=$(read_env_val "TELEGRAM_API_IP" 2>/dev/null || true)
+    tg_api_ip="${tg_api_ip:-149.154.167.220}"
+    local tg_api_base="https://api.telegram.org/bot${token}"
+    local tg_curl="curl -s --connect-timeout 5 --max-time 10 --resolve api.telegram.org:443:${tg_api_ip}"
 
     for raw in "${raw_ids[@]}"; do
         raw="${raw#@}"
@@ -202,13 +207,11 @@ resolve_telegram_ids() {
         else
             echo -ne "  ${DIM}Получаю ID для @${raw}...${NC}" >&2
             local id
-            id=$(curl -s --connect-timeout 5 --max-time 10 \
-              "https://api.telegram.org/bot${token}/getChat?chat_id=@${raw}" 2>/dev/null | \
+            id=$($tg_curl "${tg_api_base}/getChat?chat_id=@${raw}" 2>/dev/null | \
               jq -r '.result.id // empty' 2>/dev/null)
             if [ -z "$id" ]; then
                 local updates last_id offset deadline
-                updates=$(curl -s --connect-timeout 5 --max-time 10 \
-                  "https://api.telegram.org/bot${token}/getUpdates" 2>/dev/null)
+                updates=$($tg_curl "${tg_api_base}/getUpdates" 2>/dev/null)
                 id=$(echo "$updates" | jq -r --arg u "$raw" '
                   .result[] | select(.message != null) | .message.from |
                   select(.username == $u) | .id
@@ -217,11 +220,10 @@ resolve_telegram_ids() {
                     last_id=$(echo "$updates" | jq -r '[.result[].update_id] | max // 0' 2>/dev/null)
                     offset=$((last_id + 1))
                     echo -e "\r  ${DIM}Ожидаю сообщение от @${raw} (напишите боту /start)...${NC}" >&2
-                    deadline=$(($(date +%s) + 15))
+                    deadline=$(($(date +%s) + 20))
                     while [ "$(date +%s)" -lt "$deadline" ]; do
                         sleep 2
-                        updates=$(curl -s --connect-timeout 5 --max-time 8 \
-                          "https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=5" 2>/dev/null)
+                        updates=$($tg_curl "${tg_api_base}/getUpdates?offset=${offset}&timeout=5" 2>/dev/null)
                         id=$(echo "$updates" | jq -r --arg u "$raw" '
                           .result[] | select(.message != null) | .message.from |
                           select(.username == $u) | .id
