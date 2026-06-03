@@ -102,7 +102,20 @@ generate_config() {
         defaults: {
           model: {
             primary: primaryModel
+          },
+          imageModel: {
+            primary: primaryModel
           }
+        }
+      },
+      session: {
+        reset: {
+          mode: "daily",
+          atHour: 4,
+          idleMinutes: 120
+        },
+        compaction: {
+          mode: "default"
         }
       },
       plugins: {
