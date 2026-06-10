@@ -49,7 +49,11 @@ save_env() {
                 sed -i '' "s|^${key}=.*|${key}=${val}|" "$tmpfile"
             fi
         else
-            echo "${key}=${val}" >> "$tmpfile"
+            if [[ "$val" == *"["* || "$val" == *" "* || "$val" == *"\""* ]]; then
+                echo "${key}='${val}'" >> "$tmpfile"
+            else
+                echo "${key}=${val}" >> "$tmpfile"
+            fi
         fi
     done
     cat "$tmpfile" > "$ENV_FILE"
@@ -113,9 +117,6 @@ generate_config() {
           mode: "daily",
           atHour: 4,
           idleMinutes: 120
-        },
-        compaction: {
-          mode: "default"
         }
       },
       plugins: {

@@ -268,6 +268,10 @@ EOF
 }
 
 save_env() {
+    local tg_users="${8}"
+    if [[ "$tg_users" == *"["* || "$tg_users" == *" "* ]]; then
+        tg_users="'${tg_users}'"
+    fi
     cat > .env << EOF
 # DelovodAI — конфигурация окружения
 OLLAMA_HOST=${1}
@@ -277,7 +281,7 @@ WEBUI_PORT=${4}
 CALDAV_PORT=${5}
 DEFAULT_MODEL=${6}
 TZ=${7}
-TELEGRAM_ALLOWED_USERS=${8}
+TELEGRAM_ALLOWED_USERS=${tg_users}
 EOF
 }
 
