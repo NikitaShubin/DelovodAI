@@ -131,7 +131,4 @@ data/
 ## Зависимости
 
 - **Docker** + **Docker Compose**
-- **SelfHostedAI** ([github.com/NikitaShubin/SelfHostedAI](https://github.com/NikitaShubin/SelfHostedAI))
-  — рекомендованный способ развернуть Ollama. Проекты независимы и не обязаны
-  находиться рядом: Ollama может быть на другом ПК, главное — доступность
-  по адресу из `OLLAMA_HOST`.
+- **Внешний LLM-бэкенд** — можно использовать смежный проект [**SelfHostedAI**](https://github.com/NikitaShubin/SelfHostedAI). Проекты независимы и могут быть разнесены по разным серверам. Главное — доступность по сети (например, по адресу из `OLLAMA_HOST`).
