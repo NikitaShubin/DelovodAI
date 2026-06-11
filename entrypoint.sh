@@ -27,7 +27,9 @@ link_openclaw_home() {
 load_env() {
     if [ -f "$ENV_FILE" ]; then
         set -a
-        source "$ENV_FILE"
+        set +e
+        . "$ENV_FILE"
+        set -e
         set +a
     fi
 }
@@ -37,19 +39,19 @@ save_env() {
     if [ -f "$ENV_FILE" ]; then
         cp "$ENV_FILE" "$tmpfile"
     else
-        : >"$tmpfile"
+        : > "$tmpfile"
     fi
     for key in OLLAMA_HOST TELEGRAM_BOT_TOKEN WEBUI_PASSWORD WEBUI_PORT DEFAULT_MODEL OPENCLAW_GATEWAY_TOKEN TELEGRAM_ALLOWED_USERS; do
         local val; val=$(eval echo "\${$key:-}")
         [ -z "$val" ] && continue
         if grep -qE "^${key}=" "$tmpfile" 2>/dev/null; then
-            if sed --version 2>/dev/null | grep -q GNU; then
-                sed -i "s|^${key}=.*|${key}=${val}|" "$tmpfile"
+            if [[ "$val" == *"["* || "$val" == *" "* || "$val" == *"\""* || "$val" == *":"* ]]; then
+                sed -i "s|^${key}=.*|${key}='${val}'|" "$tmpfile"
             else
-                sed -i '' "s|^${key}=.*|${key}=${val}|" "$tmpfile"
+                sed -i "s|^${key}=.*|${key}=${val}|" "$tmpfile"
             fi
         else
-            if [[ "$val" == *"["* || "$val" == *" "* || "$val" == *"\""* ]]; then
+            if [[ "$val" == *"["* || "$val" == *" "* || "$val" == *"\""* || "$val" == *":"* ]]; then
                 echo "${key}='${val}'" >> "$tmpfile"
             else
                 echo "${key}=${val}" >> "$tmpfile"
@@ -61,131 +63,179 @@ save_env() {
 }
 
 generate_config() {
-    node -e '
-    var crypto = require("crypto");
-    var host = (process.env.OLLAMA_HOST || "ollama:11434")
-      .replace(/^https?:\/\//, "");
+    local primary_model="ollama/${DEFAULT_MODEL:-gpt-oss:20b}"
+    local gw_password="${WEBUI_PASSWORD:-}"
+    local gw_port="${WEBUI_PORT:-3000}"
 
-    var gwToken = process.env.OPENCLAW_GATEWAY_TOKEN;
-    if (!gwToken) {
-      gwToken = crypto.randomBytes(24).toString("hex");
-      console.log("Generated gateway token: " + gwToken);
-    }
+    # Generate base config via openclaw onboard (new format v2026.5+)
+    openclaw onboard --non-interactive --accept-risk --flow manual \
+        --auth-choice skip \
+        --gateway-auth password \
+        --gateway-password "$gw_password" \
+        --gateway-bind lan \
+        --gateway-port "$gw_port" \
+        --skip-health 2>&1
 
-    var gwPassword = process.env.WEBUI_PASSWORD;
-    var gwPort = parseInt(process.env.WEBUI_PORT || "3000", 10);
-    var primaryModel = "ollama/" + (process.env.DEFAULT_MODEL || "gpt-oss:20b");
+    # Set default model
+    openclaw models set "$primary_model" 2>&1
 
-    var authCfg;
-    if (gwPassword) {
-      authCfg = { mode: "password", password: gwPassword, token: gwToken };
-      console.log("Using password auth");
-    } else {
-      authCfg = { mode: "token", token: gwToken };
-    }
+    # Register model in main config's models.providers.ollama
+    if command -v jq &>/dev/null; then
+        local tmp; tmp=$(mktemp)
+        local model_id="${DEFAULT_MODEL:-gpt-oss:20b}"
+        local ollama_url="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+        jq --arg id "$model_id" --arg name "$model_id" --arg url "$ollama_url" '
+            .models.providers.ollama.baseUrl = $url
+            | .models.providers.ollama.models = (
+                .models.providers.ollama.models // []
+                | if any(.[]; .id == $id) then . else . + [{id: $id, name: $name}] end
+            )
+        ' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+    fi
 
-    var cfg = {
-      gateway: {
-        mode: "local",
-        port: gwPort,
-        bind: "lan",
-        auth: authCfg,
-        controlUi: { enabled: true, allowInsecureAuth: true }
-      },
-      models: {
-        providers: {
-          ollama: {
-            baseUrl: "http://" + host,
-            apiKey: "ollama-local",
-            api: "openai-completions",
-            injectNumCtxForOpenAICompat: true
-          }
-        }
-      },
-      agents: {
-        defaults: {
-          model: {
-            primary: primaryModel
-          },
-          imageModel: {
-            primary: primaryModel
-          }
-        }
-      },
-      session: {
-        reset: {
-          mode: "daily",
-          atHour: 4,
-          idleMinutes: 120
-        }
-      },
-      plugins: {
-        load: { paths: ["/data/plugins"] }
-      }
-    };
+    # Add control UI and allowed origins
+    if command -v jq &>/dev/null; then
+        local tmp; tmp=$(mktemp)
+        jq '.gateway.controlUi = { enabled: true, allowInsecureAuth: true }
+            | .gateway.tailscale = { mode: "off", resetOnExit: false }' \
+            "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+    fi
 
-    if (process.env.TELEGRAM_BOT_TOKEN) {
-      var tgPolicy = "pairing";
-      var tgAllowFrom = [];
-      try {
-        var parsed = JSON.parse(process.env.TELEGRAM_ALLOWED_USERS || "[]");
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          tgPolicy = "allowlist";
-          tgAllowFrom = parsed;
-        }
-      } catch (e) {}
+    # Add telegram channel if token is set
+    if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+        openclaw channels add --channel telegram --use-env 2>&1
+    fi
 
-      cfg.channels = {
-        telegram: {
-          enabled: true,
-          botToken: process.env.TELEGRAM_BOT_TOKEN,
-          dmPolicy: tgPolicy,
-          network: { autoSelectFamily: false }
-        }
-      };
-      if (tgAllowFrom.length > 0) {
-        cfg.channels.telegram.allowFrom = tgAllowFrom;
-        cfg.commands = {
-          ownerAllowFrom: tgAllowFrom.map(function (id) { return "telegram:" + id; })
-        };
-      }
-    }
+    # Create ollama auth profile for the agent
+    local auth_file="$OPENCLAW_HOME_DIR/agents/main/agent/auth-profiles.json"
+    if ! grep -q '"ollama"' "$auth_file" 2>/dev/null; then
+        echo "ollama-local" | openclaw models auth paste-api-key \
+            --provider ollama --profile-id ollama:local 2>&1
+    fi
 
-    require("fs").writeFileSync(
-      process.env.HOME + "/.openclaw/openclaw.json",
-      JSON.stringify(cfg, null, 2)
-    );
-    '
-}
+    # Register model in agent's models.json and update catalog
+    local model_name="${DEFAULT_MODEL:-gpt-oss:20b}"
+    local ollama_host="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+    local models_json="$OPENCLAW_HOME_DIR/agents/main/agent/models.json"
+    local catalog_json="$OPENCLAW_HOME_DIR/agents/main/agent/plugins/ollama/catalog.json"
 
-sync_auth() {
-    local current_mode current_password current_token desired_password
-    desired_password="${WEBUI_PASSWORD:-}"
-    current_mode=$(jq -r '.gateway.auth.mode // empty' "$CONFIG_FILE" 2>/dev/null)
-    current_password=$(jq -r '.gateway.auth.password // empty' "$CONFIG_FILE" 2>/dev/null)
-    current_token=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE" 2>/dev/null)
+    if command -v jq &>/dev/null; then
+        local tmp; tmp=$(mktemp)
 
-    if [ -n "$desired_password" ]; then
-        if [ "$current_mode" != "password" ] || [ "$current_password" != "$desired_password" ]; then
-            echo "Setting password auth in config"
-            if [ -z "$current_token" ]; then
-                current_token=$(openssl rand -hex 24 2>/dev/null || node -e "process.stdout.write(require('crypto').randomBytes(24).toString('hex'))")
-            fi
-            jq --arg mode "password" --arg password "$desired_password" --arg token "$current_token" \
-              '.gateway.auth = { mode: $mode, password: $password, token: $token }' \
-              "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        # Add model to agent models.json
+        if [ -f "$models_json" ]; then
+            jq --arg id "$model_name" '
+                .providers.ollama.models = (
+                    .providers.ollama.models // []
+                    | if any(.[]; .id == $id) then . else . + [{id: $id}] end
+                )
+            ' "$models_json" > "$tmp" && mv "$tmp" "$models_json"
         fi
-    else
-        if [ "$current_mode" != "token" ] || [ -z "$current_token" ]; then
-            if [ -z "$current_token" ]; then
-                current_token=$(openssl rand -hex 24 2>/dev/null || node -e "process.stdout.write(require('crypto').randomBytes(24).toString('hex'))")
-            fi
-            echo "Setting token auth in config"
-            jq --arg mode "token" --arg token "$current_token" \
-              '.gateway.auth = { mode: $mode, token: $token }' \
-              "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+
+        # Update catalog.json with correct baseUrl and model list
+        if [ -f "$catalog_json" ]; then
+            jq --arg url "$ollama_host" --arg model "$model_name" '
+                .providers.ollama.baseUrl = $url
+                | .providers.ollama.models = (
+                    .providers.ollama.models // []
+                    | if any(.[]; . == $model) then . else . + [$model] end
+                )
+            ' "$catalog_json" > "$tmp" && mv "$tmp" "$catalog_json"
         fi
     fi
+}
+
+apply_model_context() {
+    local model_id="${DEFAULT_MODEL:-gpt-oss:20b}"
+    local ollama_host="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+
+    if ! command -v curl &>/dev/null || ! command -v jq &>/dev/null; then
+        echo "  Skipping model context probe: missing curl or jq"
+        return
+    fi
+
+    # Env override: skip probe
+    if [ -n "${MODEL_NUM_CTX:-}" ]; then
+        echo "  Using MODEL_NUM_CTX=$MODEL_NUM_CTX (env override)"
+        _write_num_ctx "$model_id" "$MODEL_NUM_CTX"
+        return
+    fi
+
+    local model_info
+    model_info=$(curl -s --connect-timeout 5 "$ollama_host/api/show" \
+        -d "{\"model\":\"$model_id\"}" 2>/dev/null || true)
+
+    if [ -z "$model_info" ]; then
+        echo "  Could not query Ollama ($ollama_host), keeping default settings"
+        return
+    fi
+
+    local context_length
+    context_length=$(echo "$model_info" | jq -r '
+        [.model_info | to_entries[] | select(.key | test("context_length$")) | .value]
+        | first // empty
+    ' 2>/dev/null || true)
+
+    if [ -z "$context_length" ] || [ "$context_length" = "null" ] || [ "$context_length" -le 0 ] 2>/dev/null; then
+        echo "  Could not determine context_length for $model_id, keeping default settings"
+        return
+    fi
+
+    local max_ctx
+    max_ctx=$context_length
+    [ "$max_ctx" -gt 65536 ] && max_ctx=65536
+
+    echo ""
+    echo "  Probing ${model_id} for max working num_ctx (hardware limit, cap ${max_ctx})..."
+
+    local num_ctx=$max_ctx
+    local reduced=false
+
+    while [ "$num_ctx" -ge 2048 ]; do
+        echo -n "    Trying num_ctx=${num_ctx}... "
+        local resp
+        resp=$(curl -s --connect-timeout 10 --max-time 60 \
+            "$ollama_host/api/generate" \
+            -d "{\"model\":\"$model_id\",\"prompt\":\".\",\"options\":{\"num_ctx\":$num_ctx},\"keep_alive\":0}" \
+            2>/dev/null || true)
+
+        if echo "$resp" | grep -qi "out of memory\|CUDA error\|OOM"; then
+            echo "OOM"
+            reduced=true
+            local next=$(( num_ctx / 2 ))
+            if [ "$next" -lt 2048 ]; then
+                num_ctx=2048
+                echo "    Warning: even num_ctx=2048 failed with OOM, using minimal value"
+                break
+            fi
+            num_ctx=$next
+        else
+            echo "OK"
+            break
+        fi
+    done
+
+    if [ "$reduced" = true ]; then
+        echo "  ⚠ Context window reduced from ${max_ctx} to ${num_ctx} (VRAM limit)"
+    else
+        echo "  Context window: ${num_ctx} (full)"
+    fi
+
+    _write_num_ctx "$model_id" "$num_ctx"
+}
+
+_write_num_ctx() {
+    local model_id="$1" num_ctx="$2"
+    local tmp; tmp=$(mktemp)
+    jq --arg id "$model_id" --argjson num_ctx "$num_ctx" '
+        (.models.providers.ollama.models // []) |= map(
+            if .id == $id then . * {params: {num_ctx: $num_ctx}} else . end
+        )
+        | .agents.defaults.models["ollama/\($id)"] = (
+            .agents.defaults.models["ollama/\($id)"] // {}
+            | .params.num_ctx = $num_ctx
+        )
+    ' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
 }
 
 print_welcome() {
@@ -210,22 +260,12 @@ print_welcome() {
 
 load_env
 
-# Preserve gateway token if config already exists
-if [ -f "$CONFIG_FILE" ]; then
-    PRESERVED_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE" 2>/dev/null)
-    if [ -n "$PRESERVED_TOKEN" ]; then
-        export OPENCLAW_GATEWAY_TOKEN="$PRESERVED_TOKEN"
-    fi
-fi
-
 ensure_dirs
 link_openclaw_home
 setup_agents_md
 generate_config
 
-if [ -z "$OPENCLAW_GATEWAY_TOKEN" ]; then
-    OPENCLAW_GATEWAY_TOKEN=$(jq -r '.gateway.auth.token // empty' "$CONFIG_FILE" 2>/dev/null || true)
-fi
+apply_model_context
 
 save_env
 

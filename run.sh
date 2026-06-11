@@ -467,7 +467,7 @@ fi
 # ── Build & start ───────────────────────────────────
 echo ""
 echo -e "${BOLD}Сборка образов...${NC}"
-docker compose build 2>&1 | sed 's/^/   /'
+docker compose build --pull 2>&1 | sed 's/^/   /'
 
 echo -e "${BOLD}Запуск контейнеров...${NC}"
 docker compose up -d 2>&1 | sed 's/^/   /'
