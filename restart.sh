@@ -5,9 +5,9 @@ cd "$(cd "$(dirname "$0")" && pwd)" || exit
 
 if [ -t 1 ]; then
     GREEN='\033[1;32m'; YELLOW='\033[1;33m'
-    BLUE='\033[1;94m'; BOLD='\033[1m'; NC='\033[0m'
+    BLUE='\033[1;94m'; NC='\033[0m'
 else
-    GREEN=''; YELLOW=''; BLUE=''; BOLD=''; NC=''
+    GREEN=''; YELLOW=''; BLUE=''; NC=''
 fi
 
 echo ""

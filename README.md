@@ -23,8 +23,9 @@
 Также можно передать параметры через CLI:
 
 ```bash
-./run.sh --ollama-host ollama:11434 --model qwen3.6:35b-a3b-q8_0 --webui-password mypass \
-         --telegram-token 123:ABC --non-interactive
+./run.sh --ollama-host ollama:11434 \
+    --model qwen3.6:35b-a3b-q8_0 --webui-password mypass \
+    --telegram-token 123:ABC --non-interactive
 ```
 
 ### Повторная настройка
@@ -40,7 +41,7 @@
 ### Другие скрипты
 
 | Скрипт | Назначение |
-|---|---|
+| --- | --- |
 | `./run.sh` | Сборка, запуск, интерактивная настройка |
 | `./restart.sh` | Остановка + запуск (передаёт `-r` в run.sh) |
 | `./stop.sh` | Остановка сервисов |
@@ -52,7 +53,7 @@
 **Allowlist** (рекомендуется) — укажите username или числовой ID пользователей
 при настройке:
 
-```
+```shell
 ./run.sh -r
 # В поле "Пользователи Telegram" введите: @ваш_username
 ```
@@ -82,11 +83,11 @@ TELEGRAM_API_IP=<другой_IP>
 ## Переменные окружения (`.env`)
 
 | Переменная | Обязательно | По умолчанию | Описание |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `OLLAMA_HOST` | да | `ollama:11434` | Адрес Ollama |
 | `TELEGRAM_BOT_TOKEN` | нет | — | Токен Telegram-бота |
 | `TELEGRAM_ALLOWED_USERS` | нет | `[]` | JSON-массив числовых ID для allowlist |
-| `TELEGRAM_API_IP` | нет | `149.154.167.220` | IP-адрес Telegram Bot API (обход блокировок) |
+| `TELEGRAM_API_IP` | нет | `149.154.167.220` | IP Telegram Bot API (обход блокировок) |
 | `WEBUI_PASSWORD` | нет | — | Пароль веб-интерфейса |
 | `WEBUI_PORT` | нет | `3000` | Порт веб-интерфейса |
 | `CALDAV_PORT` | нет | — | Порт CalDAV (пусто = только внутри Docker) |
@@ -97,7 +98,7 @@ TELEGRAM_API_IP=<другой_IP>
 
 Всё изменяемое — внутри `data/` (директория в `.gitignore`):
 
-```
+```text
 data/
 ├── config/
 │   ├── openclaw.json    ← конфигурация OpenCLAW (генерируется при каждом запуске)
@@ -115,7 +116,7 @@ data/
 ## CLI-флаги `run.sh`
 
 | Флаг | Описание |
-|---|---|
+| --- | --- |
 | `-o, --ollama-host HOST` | Адрес Ollama-сервера |
 | `-t, --telegram-token TOKEN` | Токен Telegram-бота |
 | `-w, --webui-password PASS` | Пароль Web UI |
@@ -131,4 +132,7 @@ data/
 ## Зависимости
 
 - **Docker** + **Docker Compose**
-- **Внешний LLM-бэкенд** — можно использовать смежный проект [**SelfHostedAI**](https://github.com/NikitaShubin/SelfHostedAI). Проекты независимы и могут быть разнесены по разным серверам. Главное — доступность по сети (например, по адресу из `OLLAMA_HOST`).
+- **Внешний LLM-бэкенд** — можно использовать смежный проект
+  [**SelfHostedAI**](https://github.com/NikitaShubin/SelfHostedAI).
+  Проекты независимы и могут быть разнесены по разным серверам.
+  Главное — доступность по сети (например, по адресу из `OLLAMA_HOST`).

@@ -4,8 +4,8 @@ services:
   delovodai:
     build: .
     container_name: delovodai
-    ports:
-      - "${WEBUI_PORT:-3000}:3000"
+    volumes:
+      - ./data:/data
     environment:
       - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -15,14 +15,14 @@ services:
       - TZ=${TZ:-Europe/Moscow}
       - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
       - OPENCLAW_TELEMETRY=false
-    volumes:
-      - ./data:/data
+    ports:
+      - "0.0.0.0:${WEBUI_PORT:-3000}:3000"
     extra_hosts:
       - "api.telegram.org:${TELEGRAM_API_IP:-149.154.167.220}"
     restart: unless-stopped
 
   radicale:
-    image: kozea/radicale:latest
+    image: kozea/radicale:3.7
     container_name: radicale
     volumes:
       - ./data/calendar:/var/lib/radicale

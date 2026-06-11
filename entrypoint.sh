@@ -28,6 +28,7 @@ load_env() {
     if [ -f "$ENV_FILE" ]; then
         set -a
         set +e
+        # shellcheck disable=SC1090
         . "$ENV_FILE"
         set -e
         set +a

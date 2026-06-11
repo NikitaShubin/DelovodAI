@@ -111,7 +111,7 @@ resolve_val() {
 prompt() {
     local msg="$1" default="$2"
     local input
-    read -p "$(echo -e "${BOLD}${msg}${NC} ${DIM}[${default}]: ${NC}")" input
+    read -r -p "$(echo -e "${BOLD}${msg}${NC} ${DIM}[${default}]: ${NC}")" input
     input="${input:-$default}"
     echo "$input"
 }
@@ -119,7 +119,7 @@ prompt() {
 prompt_optional() {
     local msg="$1" default="$2"
     local input
-    read -p "$(echo -e "${DIM}${msg} [${default}]: ${NC}")" input
+    read -r -p "$(echo -e "${DIM}${msg} [${default}]: ${NC}")" input
     input="${input:-$default}"
     echo "$input"
 }
@@ -156,10 +156,10 @@ interactive_select() {
 
     while true; do
         local key
-        IFS= read -s -n1 key 2>/dev/null
+        IFS= read -r -s -n1 key 2>/dev/null
         if [ "$key" = $'\x1b' ]; then
             local seq
-            IFS= read -s -n2 -t 0.1 seq 2>/dev/null || true
+            IFS= read -r -s -n2 -t 0.1 seq 2>/dev/null || true
             case "$seq" in
                 '[A') [ "$selected" -gt 0 ] && ((selected--)) ;;
                 '[B') [ "$selected" -lt "$((n - 1))" ] && ((selected++)) ;;
@@ -346,12 +346,12 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
     if [ -n "$_ENV_WEBUI_PASSWORD" ]; then
         echo -e "${DIM}Пароль Web UI задан через переменную окружения.${NC}"
         echo -e "${DIM}Enter = оставить, введите новый = заменить.${NC}"
-        read -s -p "$(echo -e "${DIM}Пароль Web UI: ${NC}")" input
+        read -r -s -p "$(echo -e "${DIM}Пароль Web UI: ${NC}")" input
         echo
         WEBUI_PASSWORD="${input:-$_ENV_WEBUI_PASSWORD}"
     else
         echo -e "${DIM}Пароль Web UI (Enter = без пароля):${NC}"
-        read -s input
+        read -r -s input
         echo
         WEBUI_PASSWORD="${input:-нет}"
         [ "$WEBUI_PASSWORD" = "нет" ] && WEBUI_PASSWORD=""
@@ -391,7 +391,7 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
 
         default_hint=""
         [ -n "$_ENV_TELEGRAM_ALLOWED_USERS" ] && default_hint=" (текущий: $_ENV_TELEGRAM_ALLOWED_USERS)"
-        read -p "$(echo -e "${DIM}Пользователи Telegram${default_hint}: ${NC}")" tg_users_input
+        read -r -p "$(echo -e "${DIM}Пользователи Telegram${default_hint}: ${NC}")" tg_users_input
 
         if [ -n "$tg_users_input" ]; then
             IFS=' ' read -ra raw_arr <<< "$tg_users_input"
@@ -404,7 +404,7 @@ if [ "$RUN_INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
                 echo -e "${DIM}Узнайте ID у @userinfobot (напишите /start).${NC}"
                 echo -e "${DIM}Либо напишите боту через искомый аккаунт, запустите скрипт снова.${NC}"
                 echo -e "${DIM}Введите числовые ID через пробел, или нажмите Enter для pairing.${NC}"
-                read -p "$(echo -e "${DIM}Числовые ID: ${NC}")" manual_ids
+                read -r -p "$(echo -e "${DIM}Числовые ID: ${NC}")" manual_ids
                 ids_arr=()
                 for id in $manual_ids; do
                     [[ "$id" =~ ^[0-9]+$ ]] && ids_arr+=("$id")
