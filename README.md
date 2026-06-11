@@ -131,6 +131,7 @@ data/
 ## Зависимости
 
 - **Docker** + **Docker Compose**
-- **SelfHostedAI** — Ollama + Open WebUI в соседней директории
-  ([github.com/NikitaShubin/SelfHostedAI](https://github.com/NikitaShubin/SelfHostedAI)).
-  Ollama должен быть запущен и доступен по адресу из `OLLAMA_HOST`.
+- **SelfHostedAI** ([github.com/NikitaShubin/SelfHostedAI](https://github.com/NikitaShubin/SelfHostedAI))
+  — рекомендованный способ развернуть Ollama. Проекты независимы и не обязаны
+  находиться рядом: Ollama может быть на другом ПК, главное — доступность
+  по адресу из `OLLAMA_HOST`.
