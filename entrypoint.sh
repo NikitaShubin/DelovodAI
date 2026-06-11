@@ -104,6 +104,15 @@ generate_config() {
     # Add telegram channel if token is set
     if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
         openclaw channels add --channel telegram --use-env 2>&1
+
+        # If allowed users specified, switch from pairing to allowlist
+        if [ -n "$TELEGRAM_ALLOWED_USERS" ] && [ "$TELEGRAM_ALLOWED_USERS" != "[]" ]; then
+            local tmp; tmp=$(mktemp)
+            jq --argjson users "$TELEGRAM_ALLOWED_USERS" '
+                .channels.telegram.dmPolicy = "allowlist"
+                | .channels.telegram.allowFrom = ([$users[] | "tg:\(.|tostring)"])
+            ' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+        fi
     fi
 
     # Create ollama auth profile for the agent
